@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME    = 'ironmam41732029/talentflow-ai-app'
+        IMAGE_NAME    = 'ironman41732029/talentflow-ai'
         IMAGE_TAG     = "${env.BUILD_NUMBER}"
         DOCKER_CONFIG = "${env.WORKSPACE}\\.docker"
     }
@@ -53,11 +53,27 @@ pipeline {
             steps {
                 bat '''
                 @echo off
+
+                echo ===== DIAGNOSTICS =====
+                echo Jenkins credential username : %DOCKERHUB_CREDS_USR%
+                echo Image to push               : %IMAGE_NAME%:%IMAGE_TAG%
+
+                if "%DOCKERHUB_CREDS_USR%"=="" (
+                    echo ERROR: username is empty - credential kind must be "Username with password"
+                    exit /b 1
+                )
+                if "%DOCKERHUB_CREDS_PSW%"=="" (
+                    echo ERROR: token is empty
+                    exit /b 1
+                )
+                echo =======================
+
                 echo %DOCKERHUB_CREDS_PSW%| docker login -u %DOCKERHUB_CREDS_USR% --password-stdin
                 if errorlevel 1 exit /b 1
-                docker push %IMAGE_NAME%:%IMAGE_TAG%
+
+                docker push --quiet %IMAGE_NAME%:%IMAGE_TAG%
                 if errorlevel 1 exit /b 1
-                docker push %IMAGE_NAME%:latest
+                docker push --quiet %IMAGE_NAME%:latest
                 if errorlevel 1 exit /b 1
                 '''
             }
@@ -67,11 +83,12 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes') {
+            // Skipped (not failed) if your repo has no k8s folder
             when { expression { fileExists('k8s') } }
             steps {
                 bat 'kubectl apply -f k8s/'
-                bat 'kubectl set image deployment/talentflow-ai-app talentflow-ai-app=%IMAGE_NAME%:%IMAGE_TAG%'
-                bat 'kubectl rollout status deployment/talentflow-ai-app --timeout=120s'
+                bat 'kubectl set image deployment/talentflow-ai talentflow-ai=%IMAGE_NAME%:%IMAGE_TAG%'
+                bat 'kubectl rollout status deployment/talentflow-ai --timeout=120s'
             }
         }
     }
